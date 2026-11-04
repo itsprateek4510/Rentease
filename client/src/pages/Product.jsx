@@ -25,6 +25,7 @@ export default function Product() {
           <div className="row between" style={{ marginTop: 0 }}><h1 style={{ margin: 0 }}>{p.name}</h1><span style={{ position: 'relative', width: 40, height: 40 }}><Heart id={p._id} /></span></div>
           <Stars v={p.ratingAvg} n={p.ratingCount} />
           <p>{p.description}</p>
+          <p className="muted">Lender delivery coverage: {p.coverage?.mode === 'nationwide' ? 'All of India' : p.coverage?.mode === 'radius' ? `${p.coverage.radiusKm} km from the lender (PIN-code centre)` : ['cities', 'states', 'pincodes'].includes(p.coverage?.mode) ? (p.coverage[p.coverage.mode] || []).join(', ') : p.city}. Eligibility is confirmed using your delivery PIN at checkout.</p>
           <div className="price" style={{ fontSize: '1.7rem' }}>{money(rent)}<small> /month</small> {tenure !== 3 && rent < base && <s className="muted" style={{ fontSize: '1rem' }}>{money(base)}</s>}</div>
           <label>Choose tenure</label>
           <div className="pills" role="radiogroup" aria-label="Tenure">{p.tenureOptions.map(t => { const r = rentFor(p.monthlyRent, t), off = Math.round((1 - r / base) * 100);

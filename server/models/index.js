@@ -5,15 +5,16 @@ const User = model('User', new Schema({
   name: { type: String, required: true },
   email: { type: String, unique: true, sparse: true, lowercase: true }, // phone-only accounts have no email
   password: String, // phone-only accounts have no password
+  googleId: { type: String, unique: true, sparse: true }, pendingEmail: String,
   role: { type: String, enum: ['user', 'vendor', 'admin'], default: 'user' },
-  phone: String, city: String, active: { type: Boolean, default: true },
+  phone: { type: String, unique: true, sparse: true }, city: String, active: { type: Boolean, default: true },
   resetToken: String, resetExpires: Date, passwordChangedAt: Date,
   verified: { type: Boolean, default: true }, // new sign-ups are created unverified
   otpHash: String, otpExpires: Date, otpAttempts: { type: Number, default: 0 }, otpSentAt: Date,
   credits: { type: Number, default: 0 }, referredBy: { type: Id, ref: 'User' },
   referralCode: { type: String, unique: true, sparse: true, default: () => 'RE' + require('crypto').randomBytes(3).toString('hex').toUpperCase() },
   wishlist: [{ type: Id, ref: 'Product' }],
-  addresses: [{ label: String, line: String, city: String, pincode: String }],
+  addresses: [{ label: String, line: String, city: String, state: String, pincode: String }],
   kyc: { status: { type: String, enum: ['none', 'pending', 'verified', 'rejected'], default: 'none' }, docType: String, docNumber: String, submittedAt: Date, note: String }
 }, { timestamps: true }));
 
@@ -22,25 +23,31 @@ const Product = model('Product', new Schema({
   name: { type: String, required: true },
   category: { type: String, enum: ['furniture', 'appliance', 'babykids', 'electronics', 'fitness', 'others'], required: true },
   type: String, description: String, image: String, brand: String, capacity: String, badge: String,
-  monthlyRent: { type: Number, required: true }, // 3-month price
-  securityDeposit: { type: Number, default: 0 },
+  monthlyRent: { type: Number, required: true, min: 1 }, // 3-month price
+  securityDeposit: { type: Number, default: 0, min: 0 },
   tenureOptions: { type: [Number], default: [3, 6, 9, 12] },
-  stock: { type: Number, default: 1 }, available: { type: Number, default: 1 },
+  stock: { type: Number, default: 1, min: 0 }, available: { type: Number, default: 1, min: 0 },
   city: String, vendor: { type: Id, ref: 'User' },
+  coverage: { type: new Schema({
+    mode: { type: String, enum: ['city', 'cities', 'states', 'pincodes', 'radius', 'nationwide'], default: 'city' },
+    cities: [String], states: [String], pincodes: [String], center: { lat: Number, lng: Number }, radiusKm: Number
+  }, { _id: false }), default: () => ({ mode: 'city' }) },
   ratingAvg: { type: Number, default: 0 }, ratingCount: { type: Number, default: 0 }
-}, { timestamps: true }));
+}, { timestamps: true, optimisticConcurrency: true }));
 
 const Order = model('Order', new Schema({
   user: { type: Id, ref: 'User', required: true },
+  checkoutKey: String, checkoutHash: String,
   items: [{ product: { type: Id, ref: 'Product' }, sku: String, name: String, vendor: { type: Id, ref: 'User' },
             qty: Number, monthlyRent: Number, deposit: Number, tenure: Number, bundle: String }],
-  address: String, city: String, pincode: String, deliveryDate: Date, pickupDate: Date, endDate: Date,
+  address: String, city: String, state: String, pincode: String, deliveryDate: Date, pickupDate: Date, endDate: Date,
   totalMonthly: Number, totalDeposit: Number, discount: { type: Number, default: 0 }, couponCode: String, creditsUsed: { type: Number, default: 0 }, payable: Number,
   damageCharge: { type: Number, default: 0 },
   paymentMethod: { type: String, default: 'upi' }, paymentStatus: { type: String, enum: ['paid', 'pending', 'refunded'], default: 'paid' },
   paidMonths: { type: Number, default: 0 },
   status: { type: String, default: 'placed', enum: ['placed', 'scheduled', 'active', 'return_requested', 'returned', 'damaged', 'cancelled'] }
-}, { timestamps: true }));
+}, { timestamps: true, optimisticConcurrency: true }));
+Order.schema.index({ user: 1, checkoutKey: 1 }, { unique: true, partialFilterExpression: { checkoutKey: { $type: 'string' } } });
 
 const Payment = model('Payment', new Schema({
   user: { type: Id, ref: 'User' }, order: { type: Id, ref: 'Order' }, amount: Number,
@@ -81,11 +88,16 @@ const Contact = model('Contact', new Schema({
   name: String, email: String, phone: String, message: String, status: { type: String, enum: ['new', 'done'], default: 'new' }
 }, { timestamps: true }));
 
-const Otp = model('Otp', new Schema({ phone: { type: String, index: true }, hash: String, expires: Date, attempts: { type: Number, default: 0 }, sentAt: Date }));
+const Otp = model('Otp', new Schema({ phone: { type: String, unique: true }, hash: String, expires: { type: Date, expires: 0 }, attempts: { type: Number, default: 0 }, sentAt: Date }));
 const Store = model('Store', new Schema({ name: String, city: String, address: String, phone: String, hours: String, lat: Number, lng: Number }));
 const ServiceRequest = model('ServiceRequest', new Schema({
   type: { type: String, enum: ['relocation', 'business'], required: true }, name: String, phone: String, email: String, city: String,
   details: Schema.Types.Mixed, status: { type: String, enum: ['new', 'contacted', 'closed'], default: 'new' }, user: { type: Id, ref: 'User' }
 }, { timestamps: true }));
 
-module.exports = { Otp, Store, ServiceRequest, User, Product, Order, Payment, Maintenance, Dispute, Area, Coupon, Package, Review, Contact };
+const RefreshSession = model('RefreshSession', new Schema({
+  user: { type: Id, ref: 'User', required: true, index: true },
+  hash: { type: String, required: true, unique: true },
+  expiresAt: { type: Date, required: true, expires: 0 }
+}, { timestamps: true }));
+module.exports = { RefreshSession, Otp, Store, ServiceRequest, User, Product, Order, Payment, Maintenance, Dispute, Area, Coupon, Package, Review, Contact };

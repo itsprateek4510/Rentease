@@ -6,6 +6,9 @@ if (process.env.SMTP_HOST) {
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined });
 }
 exports.sendMail = async (to, subject, text) => {
-  if (!transporter) return console.log(`\n[email to ${to}] ${subject}\n${text}\n`);
+  if (!transporter) {
+    if (process.env.NODE_ENV === 'production') throw Object.assign(new Error('Email service is not configured'), { status: 503 });
+    return console.log(`\n[email to ${to}] ${subject}\n${text}\n`);
+  }
   await transporter.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, to, subject, text });
 };

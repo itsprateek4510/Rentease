@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import api, { lineRent, rentFor } from './api';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import api, { lineRent, rentFor, setAccessToken, refreshSession } from './api';
+import { storedLocation } from './locations';
 
 const AuthCtx = createContext(), CartCtx = createContext(), CityCtx = createContext();
 export const useAuth = () => useContext(AuthCtx);
@@ -7,31 +8,49 @@ export const useCart = () => useContext(CartCtx);
 export const useCity = () => useContext(CityCtx);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null), [loading, setLoading] = useState(!!localStorage.getItem('token')), [loginOpen, setLoginOpen] = useState(false);
+  const [user, setUser] = useState(null), [loading, setLoading] = useState(true), [loginOpen, setLoginOpen] = useState(false), [authError, setAuthError] = useState('');
   useEffect(() => {
-    if (!localStorage.getItem('token')) return;
-    api.get('/auth/me').then(r => setUser(r.data)).catch(() => localStorage.removeItem('token')).finally(() => setLoading(false));
+    let active = true;
+    localStorage.removeItem('token'); // migrate away from persistent access tokens
+    refreshSession().then(data => { if (active) setUser(data.user); }).catch(() => {}).finally(() => { if (active) setLoading(false); });
+    const expired = () => { setUser(null); setAuthError('Your session expired. Please log in again.'); };
+    window.addEventListener('auth:expired', expired);
+    return () => { active = false; window.removeEventListener('auth:expired', expired); };
   }, []);
-  const login = (token, u) => { localStorage.setItem('token', token); setUser(u); };
-  const logout = () => { localStorage.removeItem('token'); setUser(null); };
+  const login = (token, u) => { setAccessToken(token); setUser(u); setAuthError(''); };
+  const logout = async () => {
+    try { await api.post('/auth/logout', {}, { skipRefresh: true }); setAccessToken(''); setUser(null); setAuthError(''); return true; }
+    catch { setAuthError('Could not sign out on the server. Please try again.'); return false; }
+  };
   const refresh = () => api.get('/auth/me').then(r => { setUser(r.data); return r.data; });
   const toggleWish = async id => { const { data } = await api.post('/wishlist/' + id); setUser(u => ({ ...u, wishlist: data })); };
-  return <AuthCtx.Provider value={{ user, setUser, loading, login, logout, refresh, toggleWish, loginOpen, openLogin: () => setLoginOpen(true), closeLogin: () => setLoginOpen(false) }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, setUser, loading, login, logout, refresh, toggleWish, authError, loginOpen, openLogin: () => setLoginOpen(true), closeLogin: () => setLoginOpen(false) }}>{children}</AuthCtx.Provider>;
 }
 
 export function CityProvider({ children }) {
-  const [city, setCityState] = useState(localStorage.getItem('city') || ''), [areas, setAreas] = useState([]), [open, setOpen] = useState(!localStorage.getItem('city'));
-  useEffect(() => { api.get('/areas').then(r => setAreas(r.data)).catch(() => {}); }, []);
-  const setCity = c => { localStorage.setItem('city', c); setCityState(c); setOpen(false); };
-  return <CityCtx.Provider value={{ city, setCity, areas, open, setOpen }}>{children}</CityCtx.Provider>;
+  const [location, setLocationState] = useState(storedLocation), [areas, setAreas] = useState([]), [open, setOpen] = useState(!storedLocation().city);
+  const city = location.city;
+  const locationParams = useMemo(() => ({ city, state: location.state, pincode: location.pincode, lat: location.lat, lng: location.lng }), [location]);
+  const [areasError, setAreasError] = useState('');
+  useEffect(() => {
+    api.get('/areas', { timeout: 5000 }).then(r => setAreas(r.data)).catch(() => {
+      setAreasError('Location service is temporarily unavailable. You can enter any Indian city to browse; products and checkout require the server to be online.');
+      // Match the demo cities in server/seed.js when the API cannot be reached.
+      setAreas(['Delhi', 'Noida', 'Gurugram', 'Mumbai', 'Pune', 'Bengaluru', 'Hyderabad', 'Chennai', 'Lucknow', 'Aligarh'].map(name => ({ name })));
+    });
+  }, []);
+  const setLocation = value => {
+    const next = { ...value, city: value.city.trim().toLowerCase(), country: 'IN' };
+    localStorage.setItem('city', next.city); localStorage.setItem('location', JSON.stringify(next)); setLocationState(next); setOpen(false);
+  };
+  const setCity = c => setLocation({ city: c });
+  return <CityCtx.Provider value={{ city, setCity, location, setLocation, locationParams, areas, areasError, open, setOpen }}>{children}</CityCtx.Provider>;
 }
 
 export function CartProvider({ children }) {
-  const { city } = useCity();
   const [items, setItems] = useState(() => { try { return JSON.parse(localStorage.getItem('cart')) || []; } catch { return []; } });
   const [coupon, setCoupon] = useState(null); // { code, discount, description }
   useEffect(() => localStorage.setItem('cart', JSON.stringify(items)), [items]);
-  useEffect(() => { if (city) setItems(l => l.filter(i => String(i.product.city).toLowerCase() === city)); }, [city]); // products are city-specific
   const monthly = items.reduce((s, i) => s + lineRent(i) * i.qty, 0);
   const deposit = items.reduce((s, i) => s + i.product.securityDeposit * i.qty, 0);
   const saving = items.reduce((s, i) => s + (rentFor(i.product.monthlyRent, i.tenure) - lineRent(i)) * i.qty, 0);

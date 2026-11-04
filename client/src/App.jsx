@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useAuth, useCart, useCity } from './context.jsx';
-import { CATS, home } from './api';
+import api, { CATS, home, errMsg } from './api';
+import { INDIAN_STATES } from './locations';
 import LoginPanel from './components/LoginPanel.jsx';
 import HelpWidget from './components/HelpWidget.jsx';
 import Home from './pages/Home.jsx';
@@ -40,32 +41,57 @@ function LoginPage() {
   return <div className="wrap"><div className="card pad narrow"><LoginPanel onDone={u => nav(home(u))} /></div></div>;
 }
 
-function CityModal() {
-  const { city, setCity, areas, open, setOpen } = useCity(), [msg, setMsg] = useState('');
+function OAuthCallback() {
+  const { user, loading } = useAuth();
+  if (loading) return <p className="wrap">Completing Google sign-in…</p>;
+  return user ? <Navigate to={home(user)} replace /> : <div className="wrap"><p>Could not complete sign-in. Check that cookies are enabled and try again.</p><Link to="/login">Back to login</Link></div>;
+}
+
+export function CityModal() {
+  const { city, setCity, setLocation, areas, areasError, open, setOpen } = useCity(), [msg, setMsg] = useState('');
+  const [town, setTown] = useState(''), [state, setState] = useState(''), [pin, setPin] = useState(''), [busy, setBusy] = useState(false);
   if (!open) return null;
   const locate = () => {
     if (!navigator.geolocation) return setMsg('Location is not supported in this browser.');
-    navigator.geolocation.getCurrentPosition(p => {
-      const near = areas.filter(a => a.lat).map(a => ({ a, d: (a.lat - p.coords.latitude) ** 2 + (a.lng - p.coords.longitude) ** 2 })).sort((x, y) => x.d - y.d)[0];
-      near && near.d < 25 ? setCity(near.a.name) : setMsg('We do not serve your area yet. Please pick a city below.');
-    }, () => setMsg('Could not get your location. Please pick a city below.'));
+    setMsg(''); setBusy(true);
+    navigator.geolocation.getCurrentPosition(async p => {
+      try { const { data } = await api.get('/locations/reverse', { params: { lat: p.coords.latitude, lng: p.coords.longitude } }); setLocation(data); }
+      catch (e) { setMsg(errMsg(e)); } finally { setBusy(false); }
+    }, () => { setBusy(false); setMsg('Could not get your location. Enter your city or PIN code below.'); }, { timeout: 10000, maximumAge: 60000 });
+  };
+  const lookup = async e => {
+    e.preventDefault(); setBusy(true); setMsg('');
+    try { const { data } = await api.get('/locations/pincode/' + pin); setLocation(data); }
+    catch (e) { setMsg(errMsg(e)); } finally { setBusy(false); }
   };
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label="Choose your city">
       <div className="box">
         <h2 style={{ marginTop: 0 }}>Choose location</h2>
-        <p className="muted">Products, prices and delivery depend on where you live.</p>
-        <button className="alt" onClick={locate}>📍 Fetch my location</button>
+        <p className="muted">Choose any location in India. Delivery depends on each lender’s coverage. Use your PIN code for the most accurate results.</p>
+        <button className="alt" disabled={busy} onClick={locate}>📍 Fetch my location</button>
+        {areasError && <p role="status" className="muted">{areasError}</p>}
         {msg && <p className="muted">{msg}</p>}
-        <div className="tiles">{areas.map(a => <button key={a._id} className="tile" onClick={() => setCity(a.name)}><b>{a.name}</b></button>)}</div>
+        <form onSubmit={lookup} className="row" aria-label="Find location by PIN code">
+          <input aria-label="Indian PIN code" placeholder="6-digit PIN code" required pattern="[1-9][0-9]{5}" maxLength={6} inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
+          <button disabled={busy || !/^[1-9]\d{5}$/.test(pin)}>Use PIN code</button>
+        </form>
+        <form aria-label="Choose an Indian location" onSubmit={e => { e.preventDefault(); if (town.trim() && state) setLocation({ city: town, state }); }}>
+          <label>City or town</label><input required aria-label="City or town" value={town} onChange={e => setTown(e.target.value)} placeholder="Any city, town or village in India" />
+          <label>State or union territory</label><select required aria-label="State or union territory" value={state} onChange={e => setState(e.target.value)}><option value="">Select state / UT</option>{INDIAN_STATES.map(s => <option key={s}>{s}</option>)}</select>
+          <div className="row"><button disabled={busy}>Browse this location</button></div>
+        </form>
+        <p className="muted">Popular cities (not a service restriction)</p>
+        <div className="tiles">{areas.map(a => <button key={a._id || a.name} className="tile" onClick={() => setCity(a.name)}><b>{a.name}</b></button>)}</div>
         {city && <p><button className="link" onClick={() => setOpen(false)}>Keep {city}</button></p>}
+        {!city && <p><button className="link" onClick={() => setOpen(false)}>Continue browsing</button></p>}
       </div>
     </div>
   );
 }
 
 export default function App() {
-  const { user, logout, loginOpen, openLogin, closeLogin } = useAuth(), { items } = useCart(), { city, setOpen } = useCity(), nav = useNavigate(), [q, setQ] = useState('');
+  const { user, logout, loginOpen, openLogin, closeLogin, authError } = useAuth(), { items } = useCart(), { city, setOpen } = useCity(), nav = useNavigate(), [q, setQ] = useState('');
   const shopper = !user || user.role === 'user', first = user?.name?.split(' ')[0];
   return (
     <>
@@ -83,11 +109,12 @@ export default function App() {
                 {user.role === 'user' && <><Link to="/rentals">My rentals</Link><Link to="/wishlist">Wishlist</Link><Link to="/refer">Refer &amp; Earn</Link></>}
                 {user.role === 'vendor' && <Link to="/vendor">Vendor desk</Link>}
                 {user.role === 'admin' && <><Link to="/admin">Admin dashboard</Link><Link to="/vendor">Inventory</Link></>}
-                <Link to="/account">Account</Link><button className="link" onClick={() => { logout(); nav('/'); }}>Log out</button></div></div>
+                <Link to="/account">Account</Link><button className="link" onClick={async () => { if (await logout()) nav('/'); }}>Log out</button></div></div>
           ) : <button className="loginbtn" onClick={openLogin}>Login/Signup ➜</button>}
           {shopper && <Link to="/cart" className="cartb" aria-label={`Cart, ${items.length} items`}>🛒{items.length > 0 && <span className="n">{items.length}</span>}</Link>}
         </div>
       </header>
+      {authError && <p className="msg err" role="alert">{authError}</p>}
       <CityModal />
       {loginOpen && <div className="modal" role="dialog" aria-modal="true" aria-label="Log in" onClick={e => e.target === e.currentTarget && closeLogin()}>
         <div className="box login"><button className="x" aria-label="Close" onClick={closeLogin}>×</button><LoginPanel art onDone={closeLogin} /></div></div>}
@@ -110,6 +137,7 @@ export default function App() {
           <Route path="/contact" element={<div className="wrap"><Contact /></div>} />
           {['about', 'terms', 'privacy', 'faq'].map(k => <Route key={k} path={'/' + k} element={<Info page={k} />} />)}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<OAuthCallback />} />
           <Route path="/register" element={<div className="wrap"><Auth register /></div>} />
           <Route path="/verify" element={<div className="wrap"><Verify /></div>} />
           <Route path="/forgot" element={<div className="wrap"><Forgot /></div>} />

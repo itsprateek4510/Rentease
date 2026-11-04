@@ -7,18 +7,22 @@ import { useFlash } from '../ui.jsx';
 const PAY = [['upi', 'UPI', 'Pay with any UPI app'], ['card', 'Credit / debit card', 'Visa, Mastercard, RuPay'], ['netbanking', 'Net banking', 'All major banks'], ['cod', 'Pay on delivery', 'Cash or UPI to our delivery partner']];
 
 export default function Checkout() {
-  const { items, clear, monthly, deposit, discount, coupon } = useCart(), { user, refresh } = useAuth(), { city, areas } = useCity(), nav = useNavigate(), [box, run] = useFlash();
-  const saved = (user.addresses || []).filter(a => a.city.toLowerCase() === city);
-  const [sel, setSel] = useState(saved[0]?._id || 'new'), [f, setF] = useState({ label: 'Home', line: '', pincode: '' }), [keep, setKeep] = useState(true);
+  const { items, clear, monthly, deposit, discount, coupon } = useCart(), { user, refresh } = useAuth(), { city, location, setOpen } = useCity(), nav = useNavigate(), [box, run] = useFlash();
+  const saved = (user.addresses || []).filter(a => a.city.toLowerCase() === city.toLowerCase());
+  const [sel, setSel] = useState(saved[0]?._id || 'new'), [f, setF] = useState({ label: 'Home', line: '', pincode: location.pincode || '' }), [keep, setKeep] = useState(true);
   const [date, setDate] = useState(''), [pay, setPay] = useState('upi'), [busy, setBusy] = useState(false), [useCr, setUseCr] = useState(false);
+  const [checkoutKey] = useState(() => crypto.randomUUID());
   if (!items.length) return <Navigate to="/cart" />;
+  if (!city) return <div><p>Choose your delivery location in India before checkout.</p><button onClick={() => setOpen(true)}>Choose location</button></div>;
   const today = new Date().toISOString().slice(0, 10), credit = useCr ? Math.max(0, Math.min(user.credits || 0, monthly - discount)) : 0;
   const place = e => { e.preventDefault(); setBusy(true); run(async () => {
     const a = sel === 'new' ? f : saved.find(x => x._id === sel);
-    if (sel === 'new' && keep) await api.post('/addresses', { ...f, city });
+    if (!a) throw new Error('Please select a delivery address');
     const { data } = await api.post('/orders', { items: items.map(i => ({ product: i.product._id, tenure: i.tenure, qty: i.qty, bundle: i.bundle?.slug })),
-      address: a.line, pincode: a.pincode, city, deliveryDate: date, couponCode: coupon?.code, paymentMethod: pay, useCredits: useCr });
-    clear(); refresh(); nav('/order-success/' + data._id);
+      address: a.line, pincode: a.pincode, city, deliveryDate: date, couponCode: coupon?.code, paymentMethod: pay, useCredits: useCr }, { headers: { 'Idempotency-Key': checkoutKey } });
+    // Address-book failure must not turn a successfully placed order into a retry.
+    if (sel === 'new' && keep) { try { await api.post('/addresses', { ...f, city, state: location.state }); } catch { /* order remains successful */ } }
+    clear(); refresh().catch(() => {}); nav('/order-success/' + data._id);
   }).then(ok => ok || setBusy(false)); };
   return (
     <form onSubmit={place}>
@@ -26,7 +30,7 @@ export default function Checkout() {
       <div className="cols2">
         <div>
           <div className="card pad"><h3 style={{ marginTop: 0 }}>1. Delivery address in <span style={{ textTransform: 'capitalize' }}>{city}</span></h3>
-            {!areas.some(a => a.name === city) && <p className="msg err">We may not serve this city. Change your city from the header.</p>}
+            <p className="muted">Delivery is checked against each lender’s coverage using your PIN code. Check out one lender at a time.</p>
             {saved.map(a => <label key={a._id} className={'opt' + (sel === a._id ? ' on' : '')}><input type="radio" name="addr" checked={sel === a._id} onChange={() => setSel(a._id)} /><span><b>{a.label}</b><br />{a.line} {a.pincode}</span></label>)}
             <label className={'opt' + (sel === 'new' ? ' on' : '')}><input type="radio" name="addr" checked={sel === 'new'} onChange={() => setSel('new')} /><span>Add a new address</span></label>
             {sel === 'new' && <>

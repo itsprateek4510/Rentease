@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api, { ALL_TYPES, CAT_OF, money } from '../api';
+import api, { ALL_TYPES, CAT_OF, money, errMsg } from '../api';
 import { useCity } from '../context.jsx';
 import { ProductCard } from '../ui.jsx';
 
@@ -12,9 +12,14 @@ const quotes = [['Moved to Bengaluru for work and had a bed, fridge and washing 
 const faqs = [['How does the deposit work?', 'It is a refundable amount per item. After pickup and inspection it is returned to you, minus any damage charge.'], ['Can I extend or return early?', 'Yes. Extend from My rentals, or schedule a pickup date when you want to return.'], ['What is KYC and why is it needed?', 'We verify an ID document before delivery. Submit it from your Account page.'], ['Do longer tenures cost less?', 'Yes. A 12-month plan costs 20% less per month than a 3-month plan.']];
 
 export default function Home() {
-  const { city } = useCity(), [products, setProducts] = useState([]), [packs, setPacks] = useState([]), [plans, setPlans] = useState([]), [coupons, setCoupons] = useState([]), [more, setMore] = useState(false), [i, setI] = useState(0);
-  useEffect(() => { if (!city) return; api.get('/products', { params: { city } }).then(r => setProducts(r.data)); api.get('/packages', { params: { city } }).then(r => setPacks(r.data)); api.get('/packages', { params: { city, kind: 'plan' } }).then(r => setPlans(r.data)); }, [city]);
-  useEffect(() => { api.get('/coupons').then(r => setCoupons(r.data)); }, []);
+  const { city, locationParams } = useCity(), [products, setProducts] = useState([]), [packs, setPacks] = useState([]), [plans, setPlans] = useState([]), [coupons, setCoupons] = useState([]), [more, setMore] = useState(false), [i, setI] = useState(0), [error, setError] = useState('');
+  useEffect(() => {
+    let active = true; setError(''); setProducts([]); setPacks([]); setPlans([]);
+    Promise.all([api.get('/products', { params: locationParams }), api.get('/packages', { params: locationParams }), api.get('/packages', { params: { ...locationParams, kind: 'plan' } })])
+      .then(([p, pk, pl]) => { if (active) { setProducts(p.data); setPacks(pk.data); setPlans(pl.data); } }).catch(e => { if (active) setError(errMsg(e)); });
+    return () => { active = false; };
+  }, [locationParams]);
+  useEffect(() => { api.get('/coupons').then(r => setCoupons(r.data)).catch(() => {}); }, []);
   const minOf = l => { const v = l.filter(p => p.available).map(p => p.rent); return v.length ? Math.min(...v) : 0; };
   const slides = [
     { k: 'Plus by RentEase', t: 'Full home furnishing.', s: plans.length ? `Plans starting at ${money(minOf(plans))}/mo` : 'Plans for 1 RK, 1 BHK and 2 BHK homes', cta: 'Rent now', to: '/plans', q: 'livingroom,sofa/all?lock=21' },
@@ -28,6 +33,7 @@ export default function Home() {
   const rest = ALL_TYPES.map(t => t[0]).filter(k => !ORDER.includes(k)), s = slides[i];
   return (
     <>
+      {error && <p className="msg err" role="alert">Could not load rentals: {error}. Check that the backend is running.</p>}
       <section className="sec" style={{ paddingBottom: 10 }}>
         <div className="homegrid">
           <Link className="promo" to="/listings?category=appliance&type=purifier" style={{ backgroundImage: 'linear-gradient(rgba(0,0,0,.2),rgba(0,0,0,.45)),url("https://loremflickr.com/600/700/kitchen,faucet/all?lock=3")' }}>

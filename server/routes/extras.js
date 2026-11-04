@@ -3,6 +3,7 @@ const { User, Product, Order, Payment, Coupon, Package, Review, Contact, Store, 
 const { h, protect, allow, limit } = require('../middleware/auth');
 const { rentFor, cityRx } = require('../utils/pricing');
 const { checkCoupon } = require('../utils/coupon');
+const { covers, queryLocation } = require('../utils/coverage');
 const admin = [protect, allow('admin')];
 
 // ---- Wishlist
@@ -15,9 +16,9 @@ router.post('/wishlist/:id', protect, h(async (req, res) => {
 
 // ---- Saved addresses & KYC
 router.post('/addresses', protect, h(async (req, res) => {
-  const { label, line, city, pincode } = req.body;
-  if (!line || !city) return res.status(400).json({ message: 'Address and city are required' });
-  const u = await User.findById(req.user._id); u.addresses.push({ label: label || 'Home', line, city, pincode }); await u.save();
+  const { label, line, city, state, pincode } = req.body;
+  if (!line || !city || !/^[1-9]\d{5}$/.test(pincode)) return res.status(400).json({ message: 'Address, city and a valid Indian PIN code are required' });
+  const u = await User.findById(req.user._id); u.addresses.push({ label: label || 'Home', line, city, state, pincode }); await u.save();
   res.status(201).json(u.addresses);
 }));
 router.delete('/addresses/:id', protect, h(async (req, res) => {
@@ -50,10 +51,12 @@ router.delete('/admin/coupons/:id', ...admin, h(async (req, res) => { await Coup
 // ---- Home packages (bundles resolved to the products available in a city)
 router.get('/packages', h(async (req, res) => {
   const pk = await Package.find({ kind: req.query.kind === 'plan' ? 'plan' : 'package' }).sort('createdAt'), city = (req.query.city || '').trim();
-  const f = { sku: { $in: [...new Set(pk.flatMap(p => p.skus))] } }; if (city) f.city = cityRx(city);
-  const prods = await Product.find(f);
+  const f = { sku: { $in: [...new Set(pk.flatMap(p => p.skus))] } };
+  const prods = (await Product.find(f)).filter(p => (!city || covers(p, queryLocation(req.query))) && p.available > 0);
   res.json(pk.map(p => {
-    const items = p.skus.map(s => prods.find(x => x.sku === s)).filter(Boolean);
+    // Keep packages within one lender so another lender cannot control their orders.
+    const groups = [...new Set(prods.map(x => String(x.vendor)))].map(v => p.skus.map(s => prods.find(x => x.sku === s && String(x.vendor) === v)).filter(Boolean));
+    const items = groups.sort((a, b) => b.length - a.length)[0] || [];
     const originalRent = items.reduce((s, x) => s + rentFor(x.monthlyRent, 6), 0);
     const rent = items.reduce((s, x) => s + Math.round(rentFor(x.monthlyRent, 6) * (100 - p.discountPercent) / 100), 0);
     return { ...p.toObject(), items, available: items.length === p.skus.length, originalRent, rent, deposit: items.reduce((s, x) => s + x.securityDeposit, 0) };

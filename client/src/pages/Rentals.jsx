@@ -11,7 +11,7 @@ export default function Rentals() {
   const [tab, setTab] = useState('active'), [box, run] = useFlash();
   const load = () => Promise.all([api.get('/orders/mine'), api.get('/maintenance/mine'), api.get('/disputes/mine'), api.get('/payments/mine')])
     .then(([o, m, d, p]) => { setOrders(o.data); setMaint(m.data); setDisputes(d.data); setPays(p.data); });
-  useEffect(() => { load(); }, []);
+  useEffect(() => { run(load); }, []);
   const act = (fn, ok) => run(async () => { await fn(); await load(); }, ok);
   const live = ['placed', 'scheduled', 'active', 'return_requested'];
   const list = orders.filter(o => (tab === 'active') === live.includes(o.status));
