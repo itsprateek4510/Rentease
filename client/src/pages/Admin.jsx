@@ -9,7 +9,7 @@ export default function Admin() {
   const [area, setArea] = useState(''), [cp, setCp] = useState(blank), [box, run] = useFlash();
   const load = () => Promise.all([api.get('/admin/reports'), api.get('/admin/users'), api.get('/orders/manage/list'), api.get('/disputes'), api.get('/areas'), api.get('/maintenance/manage/list'), api.get('/admin/coupons'), api.get('/admin/messages'), api.get('/admin/requests')])
     .then(([r, u, o, di, a, m, c, ms, rq]) => setD({ reports: r.data, users: u.data, orders: o.data, disputes: di.data, areas: a.data, maint: m.data, coupons: c.data, messages: ms.data, requests: rq.data }));
-  useEffect(() => { load(); }, []);
+  useEffect(() => { run(load); }, []);
   const act = (fn, ok) => run(async () => { await fn(); await load(); }, ok);
   const r = d.reports;
   const kpis = r && [['Active rentals', r.activeRentals], ['Monthly recurring revenue', money(r.mrr)], ['Total collected', money(r.revenue)], ['Product utilization', r.utilizationRate + '%'],
@@ -52,6 +52,7 @@ export default function Admin() {
           {d.coupons.map(c => <tr key={c._id}><td><b>{c.code}</b></td><td>{c.description}</td><td>{money(c.minOrder)}</td><td><Tag s={c.active ? 'active' : 'cancelled'} /></td>
             <td><button className="alt" onClick={() => act(() => api.put('/admin/coupons/' + c._id, { active: !c.active }))}>{c.active ? 'Disable' : 'Enable'}</button> <button className="danger" onClick={() => act(() => api.delete('/admin/coupons/' + c._id))}>Delete</button></td></tr>)}</tbody></table></div></>}
       {tab === 'areas' && <>
+        <p className="muted">These are popular-city shortcuts. Lenders control delivery coverage; this list does not restrict service across India.</p>
         <form className="row" onSubmit={e => { e.preventDefault(); act(() => api.post('/areas', { name: area }), 'City added').then(() => setArea('')); }}>
           <input placeholder="City name" value={area} onChange={e => setArea(e.target.value)} required style={{ maxWidth: 260 }} aria-label="City name" /><button>Add city</button></form>
         <div className="row">{d.areas.map(a => <span className="tag" key={a._id} style={{ textTransform: 'capitalize' }}>{a.name} <button className="link" style={{ color: 'var(--bad)' }} aria-label={'Remove ' + a.name} onClick={() => act(() => api.delete('/areas/' + a._id))}>×</button></span>)}</div></>}

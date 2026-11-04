@@ -10,6 +10,9 @@ export default function LoginPanel({ onDone, art }) {
   const [mode, setMode] = useState('phone'), [step, setStep] = useState('phone'), [slide, setSlide] = useState(0);
   const [phone, setPhone] = useState(''), [agree, setAgree] = useState(false), [otp, setOtp] = useState(''), [dev, setDev] = useState(''), [wait, setWait] = useState(0);
   const [err, setErr] = useState(''), [busy, setBusy] = useState(false), [prof, setProf] = useState({ name: '', email: '', code: '' }), [em, setEm] = useState({ email: '', password: '' });
+  const [google, setGoogle] = useState(null);
+  const [googleRole, setGoogleRole] = useState('user');
+  useEffect(() => { api.get('/auth/providers').then(r => setGoogle(r.data.google)).catch(() => setGoogle(false)); }, []);
   useEffect(() => { if (wait <= 0) return; const t = setTimeout(() => setWait(w => w - 1), 1000); return () => clearTimeout(t); }, [wait]);
   useEffect(() => { const t = setInterval(() => setSlide(s => (s + 1) % SLIDES.length), 3500); return () => clearInterval(t); }, []);
   const go = async fn => { setErr(''); setBusy(true); try { await fn(); } catch (e) { setErr(errMsg(e)); } setBusy(false); };
@@ -21,7 +24,8 @@ export default function LoginPanel({ onDone, art }) {
     if (data.isNew || data.user.name === 'New user') setStep('profile'); else done(data.user);
   }); };
   const saveProfile = e => { e.preventDefault(); go(async () => {
-    await api.put('/auth/profile', { name: prof.name, email: prof.email || undefined });
+    const { data } = await api.put('/auth/profile', { name: prof.name, email: prof.email || undefined });
+    if (data.needsVerification) { onDone?.(data); nav('/verify', { state: { email: data.verificationEmail, devOtp: data.devOtp } }); return; }
     if (prof.code) { try { await api.post('/auth/referral', { code: prof.code }); } catch (x) { await refresh(); throw x; } }
     done(await refresh());
   }); };
@@ -35,6 +39,11 @@ export default function LoginPanel({ onDone, art }) {
       {art && <div className="lart"><div className="blob" aria-hidden="true">🛋️</div><h3>{SLIDES[slide]}</h3><div className="ldots" aria-hidden="true">{SLIDES.map((_, i) => <i key={i} className={i === slide ? 'on' : ''} />)}</div></div>}
       <div className="lform">
         {err && <div className="msg err" role="alert">{err}</div>}
+        {(mode === 'email' || step === 'phone') && <>
+          {google ? <><label>Google account type (new accounts)</label><select aria-label="Google account type" value={googleRole} onChange={e => setGoogleRole(e.target.value)}><option value="user">Renter</option><option value="vendor">Lender</option></select>
+            <a className="btn alt" href={(api.defaults.baseURL || '/api') + '/auth/google?role=' + googleRole}>Continue with Google</a></> : <button type="button" className="alt" disabled>{google === null ? 'Loading Google sign-in…' : 'Google sign-in not configured'}</button>}
+          <p className="muted">Or use your phone or email below.</p>
+        </>}
         {mode === 'phone' && step === 'phone' && <form onSubmit={send}>
           <h2>Login to <span style={{ color: 'var(--brand)' }}>RentEase</span></h2><p className="muted">Enter phone number for OTP verification</p>
           <div className="phone"><span>+91</span><input type="tel" inputMode="numeric" autoFocus maxLength={10} placeholder="Enter Phone Number" aria-label="Phone number" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} /></div>

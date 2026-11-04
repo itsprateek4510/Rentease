@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import api, { fdate, money } from '../api';
 import { Tag, useFlash } from '../ui.jsx';
+import CoverageEditor from '../components/CoverageEditor.jsx';
 
-const blank = { name: '', category: 'furniture', type: '', brand: '', capacity: '', description: '', image: '', monthlyRent: '', securityDeposit: '', tenureOptions: '3,6,9,12', stock: 1, city: '' };
+const blank = { name: '', category: 'furniture', type: '', brand: '', capacity: '', description: '', image: '', monthlyRent: '', securityDeposit: '', tenureOptions: '3,6,9,12', stock: 1, city: '', coverage: { mode: 'city' } };
 const next = { placed: [['scheduled', 'Confirm delivery']], scheduled: [['active', 'Mark delivered']], active: [['returned', 'Mark returned'], ['damaged', 'Returned damaged']], return_requested: [['returned', 'Mark picked up'], ['damaged', 'Picked up damaged']] };
 
 export function Orders({ orders, act }) {
@@ -37,11 +38,12 @@ export default function Vendor() {
   const [form, setForm] = useState(blank), [editing, setEditing] = useState(null), [box, run] = useFlash();
   const load = () => Promise.all([api.get('/products/mine/list'), api.get('/orders/manage/list'), api.get('/maintenance/manage/list')])
     .then(([p, o, m]) => { setProducts(p.data); setOrders(o.data); setMaint(m.data); });
-  useEffect(() => { load(); }, []);
+  useEffect(() => { run(load); }, []);
   const act = (fn, ok) => run(async () => { await fn(); await load(); }, ok);
   const set = k => e => setForm({ ...form, [k]: e.target.value });
   const save = e => { e.preventDefault();
-    const body = { ...form, monthlyRent: +form.monthlyRent, securityDeposit: +form.securityDeposit, stock: +form.stock,
+    const coverage = form.coverage || { mode: 'city' };
+    const body = { ...form, coverage: { ...coverage, ...(['cities', 'states', 'pincodes'].includes(coverage.mode) ? { [coverage.mode]: (coverage[coverage.mode] || []).map(s => s.trim()).filter(Boolean) } : {}) }, monthlyRent: +form.monthlyRent, securityDeposit: +form.securityDeposit, stock: +form.stock,
       tenureOptions: String(form.tenureOptions).split(',').map(Number).filter(Boolean) };
     act(() => editing ? api.put('/products/' + editing, body) : api.post('/products', body), editing ? 'Product updated' : 'Product added')
       .then(ok => { if (ok) { setForm(blank); setEditing(null); } }); };
@@ -66,14 +68,15 @@ export default function Vendor() {
               <label>Security deposit (₹)</label><input type="number" min="0" value={form.securityDeposit} onChange={set('securityDeposit')} />
               <label>Tenure options in months (comma separated)</label><input value={form.tenureOptions} onChange={set('tenureOptions')} />
               <label>Total stock</label><input type="number" min="0" value={form.stock} onChange={set('stock')} />
-              <label>City</label><input required value={form.city || ''} onChange={set('city')} /></div>
+               <label>Origin city in India</label><input required value={form.city || ''} onChange={set('city')} />
+               <CoverageEditor value={form.coverage || { mode: 'city' }} onChange={coverage => setForm({ ...form, coverage })} /></div>
           </div>
           <div className="row"><button>{editing ? 'Save changes' : 'Add product'}</button>
             {editing && <button type="button" className="alt" onClick={() => { setEditing(null); setForm(blank); }}>Cancel</button>}</div>
         </form>
         <div className="scroll"><table><thead><tr><th>Product</th><th>Rent</th><th>Deposit</th><th>Tenures</th><th>Available / Stock</th><th>City</th><th></th></tr></thead><tbody>
           {products.map(p => <tr key={p._id}><td>{p.name}</td><td>{money(p.monthlyRent)}</td><td>{money(p.securityDeposit)}</td><td>{p.tenureOptions.join(', ')}m</td>
-            <td>{p.available} / {p.stock}</td><td>{p.city}</td>
+             <td>{p.available} / {p.stock}</td><td>{p.city}<div className="muted">Coverage: {p.coverage?.mode || 'city'}</div></td>
             <td><button className="alt" onClick={() => edit(p)}>Edit</button> <button className="danger" onClick={() => confirm('Delete product?') && act(() => api.delete('/products/' + p._id), 'Deleted')}>Delete</button></td></tr>)}
         </tbody></table></div></>}
       {tab === 'orders' && <Orders orders={orders} act={act} />}

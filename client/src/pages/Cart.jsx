@@ -7,7 +7,7 @@ import { imgError, typeImg } from '../ui.jsx';
 export default function Cart() {
   const { items, update, remove, coupon, setCoupon, monthly, deposit, saving, discount } = useCart(), nav = useNavigate();
   const [code, setCode] = useState(''), [err, setErr] = useState(''), [offers, setOffers] = useState([]);
-  useEffect(() => { api.get('/coupons').then(r => setOffers(r.data)); }, []);
+  useEffect(() => { api.get('/coupons').then(r => setOffers(r.data)).catch(() => {}); }, []);
   const apply = async c => { setErr(''); try { const { data } = await api.post('/coupons/validate', { code: c || code, subtotal: monthly }); setCoupon(data); setCode(''); } catch (e) { setErr(errMsg(e)); } };
   if (!items.length) return <><h1>Your cart is empty</h1><p className="muted">Add something you like and rent it by the month.</p><Link className="btn" to="/listings">Browse products</Link> <Link className="btn alt" to="/packages">View packages</Link></>;
   return (

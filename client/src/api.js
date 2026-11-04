@@ -1,12 +1,25 @@
 import axios from 'axios';
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' });
+const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api', withCredentials: true, timeout: 15000 });
+let accessToken = '', refreshing;
+export const setAccessToken = token => { accessToken = token || ''; };
+export const refreshSession = () => {
+  if (!refreshing) refreshing = api.post('/auth/refresh', {}, { skipRefresh: true }).then(r => { setAccessToken(r.data.token); return r.data; }).finally(() => { refreshing = undefined; });
+  return refreshing;
+};
 api.interceptors.request.use(c => {
-  const t = localStorage.getItem('token');
-  if (t) c.headers.Authorization = 'Bearer ' + t;
+  if (accessToken) c.headers.Authorization = 'Bearer ' + accessToken;
   return c;
 });
-api.interceptors.response.use(r => r, e => {
-  if (e.response?.status === 401 && localStorage.getItem('token')) { localStorage.removeItem('token'); window.location.href = '/login'; }
+api.interceptors.response.use(r => r, async e => {
+  const c = e.config;
+  if (e.response?.status === 401 && c && !c.skipRefresh && !c.retried && accessToken) {
+    c.retried = true;
+    try { await refreshSession(); return api(c); }
+    catch (refreshError) {
+      if (refreshError.response?.status === 401) { setAccessToken(''); window.dispatchEvent(new Event('auth:expired')); }
+      return Promise.reject(refreshError);
+    }
+  }
   return Promise.reject(e);
 });
 export const errMsg = e => e.response?.data?.message || e.message;
@@ -32,5 +45,5 @@ export const TYPES = {
 export const ALL_TYPES = Object.values(TYPES).flat();
 export const CAT_OF = Object.fromEntries(Object.entries(TYPES).flatMap(([c, l]) => l.map(t => [t[0], c])));
 export const typeLabel = t => ALL_TYPES.find(x => x[0] === t)?.[1] || t;
-export const home = u => (u.role === 'admin' ? '/admin' : u.role === 'vendor' ? '/vendor' : '/');
+export const home = u => (u?.role === 'admin' ? '/admin' : u?.role === 'vendor' ? '/vendor' : '/');
 export default api;

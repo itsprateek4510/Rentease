@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import api, { CATS, TYPES, rentFor, typeLabel } from '../api';
+import api, { CATS, TYPES, rentFor, typeLabel, errMsg } from '../api';
 import { useCity } from '../context.jsx';
 import PillBand from '../components/PillBand.jsx';
 import { ProductCard } from '../ui.jsx';
@@ -10,10 +10,10 @@ const price = p => rentFor(p.monthlyRent, 12);
 const toggle = (arr, v) => (arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
 
 export default function Catalog() {
-  const { city } = useCity(), [sp, setSp] = useSearchParams(), [all, setAll] = useState([]), [loading, setLoading] = useState(true), [show, setShow] = useState(24);
+  const { city, locationParams } = useCity(), [sp, setSp] = useSearchParams(), [all, setAll] = useState([]), [loading, setLoading] = useState(true), [show, setShow] = useState(24), [error, setError] = useState('');
   const [st, setSt] = useState({ in: true, out: false }), [bud, setBud] = useState([]), [caps, setCaps] = useState([]), [brands, setBrands] = useState([]);
-  const category = sp.get('category') || '', type = sp.get('type') || '', q = sp.get('q') || '', sort = sp.get('sort') || 'popular';
-  useEffect(() => { if (!city) return; setLoading(true); api.get('/products', { params: { city } }).then(r => setAll(r.data)).finally(() => setLoading(false)); }, [city]);
+  const category = CATS.some(([k]) => k === sp.get('category')) ? sp.get('category') : '', type = sp.get('type') || '', q = sp.get('q') || '', sort = sp.get('sort') || 'popular';
+  useEffect(() => { let active = true; setLoading(true); setAll([]); setError(''); api.get('/products', { params: locationParams }).then(r => { if (active) setAll(r.data); }).catch(e => { if (active) setError(errMsg(e)); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, [locationParams]);
   useEffect(() => { setCaps([]); setBrands([]); setBud([]); setShow(24); }, [category, type, q]);
   const set = (k, v) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); if (k === 'category') n.delete('type'); setSp(n); };
 
@@ -51,12 +51,13 @@ export default function Catalog() {
           </aside>
           <div>
             <div className="row between" style={{ marginTop: 0 }}>
-              <h1 className="ctitle">{title}<span style={{ textTransform: 'capitalize' }}>{city}</span></h1>
+              <h1 className="ctitle">{title}<span style={{ textTransform: 'capitalize' }}>{city || 'India'}</span></h1>
               <select value={sort} onChange={e => set('sort', e.target.value)} aria-label="Sort" style={{ width: 'auto' }}>
                 <option value="popular">Most popular</option><option value="rating">Top rated</option><option value="low">Rent: low to high</option><option value="high">Rent: high to low</option></select>
             </div>
             <p className="muted">{loading ? 'Loading…' : `${list.length} products`}</p>
-            {!loading && !list.length && <p>No products match these filters. Try clearing a filter.</p>}
+            {error && <p role="alert" className="msg err">Could not load rentals: {error}</p>}
+            {!loading && !error && !list.length && <p>No lender listings match this location and these filters. Try a PIN code or clear a filter.</p>}
             <div className="grid3">{list.slice(0, show).map(p => <ProductCard key={p._id} p={p} />)}</div>
             {list.length > show && <p style={{ textAlign: 'center', marginTop: 22 }}><button className="alt" onClick={() => setShow(s => s + 24)}>Load more</button></p>}
           </div>

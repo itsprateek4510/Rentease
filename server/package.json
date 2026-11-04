@@ -2,9 +2,28 @@
   "name": "rentease-server",
   "version": "1.0.0",
   "main": "server.js",
-  "scripts": { "start": "node server.js", "dev": "node --watch server.js", "seed": "node seed.js" },
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "dev:local": "node scripts/devLocal.js",
+    "test": "node --test test/*.test.js",
+    "seed": "node seed.js"
+  },
   "dependencies": {
-    "bcryptjs": "^2.4.3", "cors": "^2.8.5", "dotenv": "^16.4.5",
-    "express": "^4.19.2", "jsonwebtoken": "^9.0.2", "mongoose": "^8.5.0", "nodemailer": "^6.9.14"
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "google-auth-library": "^11.3.3",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.5.0",
+    "nodemailer": "^10.3.1"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.1"
   }
 }

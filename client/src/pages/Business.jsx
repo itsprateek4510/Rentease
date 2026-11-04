@@ -5,7 +5,7 @@ import PillBand from '../components/PillBand.jsx';
 import { useFlash } from '../ui.jsx';
 
 export default function Business() {
-  const { areas, city } = useCity(), [box, run] = useFlash(), [f, setF] = useState({ company: '', name: '', phone: '', email: '', city, units: '', need: '' }), set = k => e => setF({ ...f, [k]: e.target.value });
+  const { city } = useCity(), [box, run] = useFlash(), [f, setF] = useState({ company: '', name: '', phone: '', email: '', city, units: '', need: '' }), set = k => e => setF({ ...f, [k]: e.target.value });
   return (
     <>
       <PillBand crumbs={[['Home', '/'], ['Business solutions']]} />
@@ -16,7 +16,7 @@ export default function Business() {
           <h3 style={{ marginTop: 0 }}>Request a quote</h3>{box}
           <label>Company</label><input required value={f.company} onChange={set('company')} /><label>Your name</label><input required value={f.name} onChange={set('name')} />
           <div className="bar"><div><label>Mobile number</label><input required inputMode="numeric" maxLength={10} value={f.phone} onChange={e => setF({ ...f, phone: e.target.value.replace(/\D/g, '') })} /></div><div><label>Work email</label><input type="email" value={f.email} onChange={set('email')} /></div></div>
-          <div className="bar"><div><label>City</label><select value={f.city} onChange={set('city')} style={{ textTransform: 'capitalize' }}>{areas.map(a => <option key={a._id} value={a.name}>{a.name}</option>)}</select></div><div><label>Number of units or seats</label><input type="number" min="1" value={f.units} onChange={set('units')} /></div></div>
+          <div className="bar"><div><label>City</label><input required value={f.city} onChange={set('city')} placeholder="Any Indian city" /></div><div><label>Number of units or seats</label><input type="number" min="1" value={f.units} onChange={set('units')} /></div></div>
           <label>What do you need?</label><textarea required rows={3} value={f.need} onChange={set('need')} />
           <div className="row"><button>Request a quote</button></div>
         </form>
