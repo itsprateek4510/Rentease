@@ -1,0 +1,12 @@
+import PillBand from '../components/PillBand.jsx';
+
+const PAGES = {
+  about: ['About RentEase', ['RentEase lets students and working professionals rent furniture, appliances, electronics and fitness equipment by the month, so moving cities does not mean buying and selling everything again.', 'Every item is quality-checked, delivered and set up for you. Maintenance and relocation within the city are free, and your deposit is refundable.', 'This is a demo project built with the MERN stack.']],
+  terms: ['Terms & Conditions', ['These are sample terms for the demo project and are not legal advice. Replace them with terms reviewed by a lawyer before launch.', 'Rentals: you rent products for the tenure you choose and pay monthly rent plus a refundable security deposit. Deposits are returned after pickup and inspection, minus any damage charges.', 'KYC: we verify an ID document before delivery. Orders cannot be scheduled until KYC is approved.', 'Cancellation: orders can be cancelled for a full refund before delivery. After delivery, schedule a pickup to end your rental.']],
+  privacy: ['Privacy Policy', ['This is a sample privacy notice for the demo project. Replace it with a policy reviewed by a lawyer before launch.', 'We collect your phone number, name, email, addresses and KYC document type (only the last 4 digits of the number) to run your account, verify your identity and deliver your order.', 'We send one-time codes and service updates by SMS and email. We do not sell your data.']],
+  faq: ['Frequently asked questions', ['How does the deposit work? It is refundable. After pickup and inspection it is returned to you, minus any damage charge.', 'Can I extend or return early? Yes. Extend from My rentals, or schedule a pickup date.', 'What is KYC? An ID check before delivery. Submit it from your Account page.', 'Do longer tenures cost less? Yes. A 12-month plan costs 20% less per month than a 3-month plan.', 'What if something breaks? Raise a maintenance request from My rentals. Repairs and replacements are free.', 'How does Refer & Earn work? Share your code. When a friend signs up with it, you both get ₹200 rent credit.']]
+};
+export default function Info({ page }) {
+  const [t, paras] = PAGES[page];
+  return (<><PillBand crumbs={[['Home', '/'], [t]]} /><div className="wrap" style={{ maxWidth: 800 }}><h1>{t}</h1>{paras.map((p, i) => <p key={i}>{p}</p>)}</div></>);
+}
